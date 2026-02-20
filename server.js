@@ -11,21 +11,26 @@ const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
 const app = express();
 
+/* Middleware */
+
 app.use(cors());
 app.use(express.json());
 
-/* Database connection */
+/* Database Connection */
 
 const db = mysql.createPool({
   host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
+  port: process.env.DB_PORT || 4000,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  ssl: { rejectUnauthorized: true }
+  ssl: {
+    rejectUnauthorized: true
+  },
+  connectionLimit: 10
 });
 
-/* Cloudinary config */
+/* Cloudinary Config */
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -33,108 +38,172 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
+/* Multer Storage */
+
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
-    folder: "family_profiles"
+    folder: "family_profiles",
+    allowed_formats: ["jpg", "png", "jpeg"]
   }
 });
 
 const upload = multer({ storage });
 
+/* Health Check Route */
+
+app.get("/", (req, res) => {
+  res.json({ status: "Family Lineage API Running" });
+});
+
 /* LOGIN */
 
 app.post("/login", async (req, res) => {
+  try {
+    const { firstname, surname, privateKey } = req.body;
 
-  const { firstname, surname, privateKey } = req.body;
+    if (privateKey !== process.env.PRIVATE_KEY)
+      return res.status(401).json({ error: "Invalid private key" });
 
-  if (privateKey !== process.env.PRIVATE_KEY)
-    return res.status(401).json({ error: "Invalid private key" });
+    const [rows] = await db.execute(
+      "SELECT * FROM persons WHERE firstname=? AND surname=?",
+      [firstname, surname]
+    );
 
-  const [rows] = await db.execute(
-    "SELECT * FROM persons WHERE firstname=? AND surname=?",
-    [firstname, surname]
-  );
+    if (rows.length === 0)
+      return res.status(404).json({ error: "User not found" });
 
-  if (rows.length === 0)
-    return res.status(404).json({ error: "User not found" });
+    res.json(rows[0]);
 
-  res.json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 /* CREATE PROFILE */
 
 app.post("/persons", upload.single("photo"), async (req, res) => {
+  try {
+    const id = uuidv4();
 
-  const id = uuidv4();
+    const {
+      firstname,
+      surname,
+      dob,
+      father_id,
+      mother_id,
+      spouse_id,
+      created_by
+    } = req.body;
 
-  const {
-    firstname,
-    surname,
-    dob,
-    father_id,
-    mother_id,
-    spouse_id,
-    created_by
-  } = req.body;
+    if (!firstname || !surname || !dob)
+      return res.status(400).json({
+        error: "firstname, surname and dob required"
+      });
 
-  const photo = req.file ? req.file.path : null;
+    const photo = req.file ? req.file.path : null;
 
-  await db.execute(
-    `INSERT INTO persons 
-     (id, firstname, surname, dob, profile_pic, father_id, mother_id, spouse_id, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, firstname, surname, dob, photo, father_id, mother_id, spouse_id, created_by]
-  );
+    await db.execute(
+      `INSERT INTO persons 
+      (id, firstname, surname, dob, profile_pic, father_id, mother_id, spouse_id, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        firstname,
+        surname,
+        dob,
+        photo,
+        father_id || null,
+        mother_id || null,
+        spouse_id || null,
+        created_by || null
+      ]
+    );
 
-  res.json({ message: "Profile created", id });
+    res.json({
+      success: true,
+      message: "Profile created",
+      id
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Insert failed" });
+  }
 });
 
 /* GET ALL PERSONS */
 
 app.get("/persons", async (req, res) => {
+  try {
+    const [rows] = await db.execute("SELECT * FROM persons");
+    res.json(rows);
 
-  const [rows] = await db.execute("SELECT * FROM persons");
-
-  res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /* GET SINGLE PERSON */
 
 app.get("/persons/:id", async (req, res) => {
+  try {
+    const [rows] = await db.execute(
+      "SELECT * FROM persons WHERE id=?",
+      [req.params.id]
+    );
 
-  const [rows] = await db.execute(
-    "SELECT * FROM persons WHERE id=?",
-    [req.params.id]
-  );
+    res.json(rows[0]);
 
-  res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-/* UPDATE PROFILE */
+/* UPDATE PERSON */
 
 app.put("/persons/:id", upload.single("photo"), async (req, res) => {
+  try {
+    const { firstname, surname, dob, instagram } = req.body;
 
-  const { firstname, surname, dob, instagram } = req.body;
+    if (!firstname || !surname || !dob)
+      return res.status(400).json({
+        error: "firstname, surname and dob required"
+      });
 
-  let photo = req.file ? req.file.path : null;
+    let photo = req.file ? req.file.path : null;
 
-  if (photo)
-    await db.execute(
-      `UPDATE persons SET firstname=?, surname=?, dob=?, instagram=?, profile_pic=? WHERE id=?`,
-      [firstname, surname, dob, instagram, photo, req.params.id]
-    );
-  else
-    await db.execute(
-      `UPDATE persons SET firstname=?, surname=?, dob=?, instagram=? WHERE id=?`,
-      [firstname, surname, dob, instagram, req.params.id]
-    );
+    if (photo) {
+      await db.execute(
+        `UPDATE persons 
+         SET firstname=?, surname=?, dob=?, instagram=?, profile_pic=? 
+         WHERE id=?`,
+        [firstname, surname, dob, instagram, photo, req.params.id]
+      );
+    } else {
+      await db.execute(
+        `UPDATE persons 
+         SET firstname=?, surname=?, dob=?, instagram=? 
+         WHERE id=?`,
+        [firstname, surname, dob, instagram, req.params.id]
+      );
+    }
 
-  res.json({ message: "Updated" });
+    res.json({
+      success: true,
+      message: "Profile updated"
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-/* START SERVER */
+/* SERVER START */
 
-app.listen(process.env.PORT, () =>
-  console.log("Server running on port", process.env.PORT)
-);
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log("Server running on port", PORT);
+});
