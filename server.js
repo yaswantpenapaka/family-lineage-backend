@@ -297,6 +297,35 @@ app.post("/add-child/:id", async (req, res) => {
   res.json({ success: true });
 });
 
+app.post("/add-sibling/:id", async (req, res) => {
+
+  const personId = req.params.id;
+
+  const [rows] = await db.execute(
+    "SELECT father_id, mother_id FROM persons WHERE id=?",
+    [personId]
+  );
+
+  if(!rows.length)
+    return res.status(404).json({error:"Person not found"});
+
+  const { father_id, mother_id } = rows[0];
+
+  if(!father_id && !mother_id)
+    return res.status(400).json({error:"Parents required to add sibling"});
+
+  const { firstname, surname, dob, gender } = req.body;
+
+  const siblingId = uuidv4();
+
+  await db.execute(
+    "INSERT INTO persons (id, firstname, surname, dob, gender, father_id, mother_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [siblingId, firstname, surname, dob, gender, father_id, mother_id]
+  );
+
+  res.json({ success:true });
+});
+
 /* ---------------- SERVER ---------------- */
 
 const PORT = process.env.PORT || 3000;
