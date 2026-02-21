@@ -200,6 +200,34 @@ app.put("/persons/:id", upload.single("photo"), async (req, res) => {
   }
 });
 
+app.put("/persons/:id", async (req, res) => {
+
+  try{
+
+    const { father_id, mother_id, spouse_id } = req.body;
+
+    await db.execute(
+
+      `UPDATE persons SET
+      father_id = COALESCE(?, father_id),
+      mother_id = COALESCE(?, mother_id),
+      spouse_id = COALESCE(?, spouse_id)
+      WHERE id=?`,
+
+      [father_id, mother_id, spouse_id, req.params.id]
+
+    );
+
+    res.json({ success:true });
+
+  }catch(err){
+
+    res.status(500).json({error:err.message});
+
+  }
+
+});
+
 /* SERVER START */
 
 const PORT = process.env.PORT || 3000;
