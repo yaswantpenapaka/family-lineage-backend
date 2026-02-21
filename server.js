@@ -164,7 +164,7 @@ app.get("/persons/:id", async (req, res) => {
 /* UPDATE PERSON */
 app.put("/persons/:id", async (req, res) => {
 
-  try{
+  try {
 
     const {
       firstname,
@@ -173,25 +173,19 @@ app.put("/persons/:id", async (req, res) => {
       gender,
       instagram,
       anniversary,
-      father_id,
-      mother_id,
-      spouse_id
+      profile_pic
     } = req.body;
 
     await db.execute(
-
       `UPDATE persons SET
-       firstname = COALESCE(?, firstname),
-       surname = COALESCE(?, surname),
-       dob = COALESCE(?, dob),
-       gender = COALESCE(?, gender),
-       instagram = COALESCE(?, instagram),
-       anniversary = COALESCE(?, anniversary),
-       father_id = COALESCE(?, father_id),
-       mother_id = COALESCE(?, mother_id),
-       spouse_id = COALESCE(?, spouse_id)
-       WHERE id=?`,
-
+       firstname = ?,
+       surname = ?,
+       dob = ?,
+       gender = ?,
+       instagram = ?,
+       anniversary = ?,
+       profile_pic = ?
+       WHERE id = ?`,
       [
         firstname,
         surname,
@@ -199,19 +193,18 @@ app.put("/persons/:id", async (req, res) => {
         gender,
         instagram,
         anniversary,
-        father_id,
-        mother_id,
-        spouse_id,
+        profile_pic,
         req.params.id
       ]
-
     );
 
-    res.json({ success:true });
+    res.json({ success: true });
 
-  }catch(err){
+  } catch (err) {
 
-    res.status(500).json({ error:err.message });
+    console.error(err);
+
+    res.status(500).json({ error: err.message });
 
   }
 
