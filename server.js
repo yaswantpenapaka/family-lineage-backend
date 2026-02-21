@@ -190,10 +190,31 @@ app.post("/add-father/:id", async (req, res) => {
     [fatherId, firstname, surname, dob]
   );
 
+  const [rows] = await db.execute(
+    "SELECT mother_id FROM persons WHERE id=?",
+    [childId]
+  );
+
+  const motherId = rows[0].mother_id;
+
   await db.execute(
     "UPDATE persons SET father_id=? WHERE id=?",
     [fatherId, childId]
   );
+
+  // 🔥 If mother exists → auto marry
+  if (motherId) {
+
+    await db.execute(
+      "UPDATE persons SET spouse_id=?, married=1 WHERE id=?",
+      [motherId, fatherId]
+    );
+
+    await db.execute(
+      "UPDATE persons SET spouse_id=?, married=1 WHERE id=?",
+      [fatherId, motherId]
+    );
+  }
 
   res.json({ success: true });
 });
@@ -207,15 +228,39 @@ app.post("/add-mother/:id", async (req, res) => {
 
   const motherId = uuidv4();
 
+  // Insert mother
   await db.execute(
     "INSERT INTO persons (id, firstname, surname, dob, gender) VALUES (?, ?, ?, ?, 'Female')",
     [motherId, firstname, surname, dob]
   );
 
+  // Get existing father
+  const [rows] = await db.execute(
+    "SELECT father_id FROM persons WHERE id=?",
+    [childId]
+  );
+
+  const fatherId = rows[0].father_id;
+
+  // Update child
   await db.execute(
     "UPDATE persons SET mother_id=? WHERE id=?",
     [motherId, childId]
   );
+
+  // 🔥 If father exists → auto marry them
+  if (fatherId) {
+
+    await db.execute(
+      "UPDATE persons SET spouse_id=?, married=1 WHERE id=?",
+      [motherId, fatherId]
+    );
+
+    await db.execute(
+      "UPDATE persons SET spouse_id=?, married=1 WHERE id=?",
+      [fatherId, motherId]
+    );
+  }
 
   res.json({ success: true });
 });
