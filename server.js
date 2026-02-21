@@ -228,6 +228,54 @@ app.put("/persons/:id", async (req, res) => {
 
 });
 
+app.put("/persons/:id", async (req, res) => {
+
+  const {
+
+    firstname,
+    surname,
+    dob,
+    gender,
+    instagram,
+    anniversary,
+    father_id,
+    mother_id
+
+  } = req.body;
+
+  await db.execute(
+
+    `UPDATE persons SET
+
+    firstname = COALESCE(?, firstname),
+    surname = COALESCE(?, surname),
+    dob = COALESCE(?, dob),
+    gender = COALESCE(?, gender),
+    instagram = COALESCE(?, instagram),
+    anniversary = COALESCE(?, anniversary),
+    father_id = COALESCE(?, father_id),
+    mother_id = COALESCE(?, mother_id)
+
+    WHERE id=?`,
+
+    [
+      firstname,
+      surname,
+      dob,
+      gender,
+      instagram,
+      anniversary,
+      father_id,
+      mother_id,
+      req.params.id
+    ]
+
+  );
+
+  res.json({success:true});
+
+});
+
 /* SERVER START */
 
 const PORT = process.env.PORT || 3000;
