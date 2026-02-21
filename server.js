@@ -166,45 +166,60 @@ app.put("/persons/:id", async (req, res) => {
 
   try {
 
-    const {
+    console.log("Update request body:", req.body);
+
+    const id = req.params.id;
+
+    const firstname = req.body.firstname || null;
+    const surname = req.body.surname || null;
+    const dob = req.body.dob || null;
+    const gender = req.body.gender || null;
+    const instagram = req.body.instagram || null;
+    const anniversary = req.body.anniversary || null;
+    const profile_pic = req.body.profile_pic || null;
+
+    const query = `
+      UPDATE persons SET
+        firstname = COALESCE(?, firstname),
+        surname = COALESCE(?, surname),
+        dob = COALESCE(?, dob),
+        gender = COALESCE(?, gender),
+        instagram = COALESCE(?, instagram),
+        anniversary = COALESCE(?, anniversary),
+        profile_pic = COALESCE(?, profile_pic)
+      WHERE id = ?
+    `;
+
+    const values = [
       firstname,
       surname,
       dob,
       gender,
       instagram,
       anniversary,
-      profile_pic
-    } = req.body;
+      profile_pic,
+      id
+    ];
 
-    await db.execute(
-      `UPDATE persons SET
-       firstname = ?,
-       surname = ?,
-       dob = ?,
-       gender = ?,
-       instagram = ?,
-       anniversary = ?,
-       profile_pic = ?
-       WHERE id = ?`,
-      [
-        firstname,
-        surname,
-        dob,
-        gender,
-        instagram,
-        anniversary,
-        profile_pic,
-        req.params.id
-      ]
-    );
+    console.log("Executing query:", query);
+    console.log("Values:", values);
 
-    res.json({ success: true });
+    await db.execute(query, values);
 
-  } catch (err) {
+    res.json({
+      success: true,
+      message: "Profile updated"
+    });
 
-    console.error(err);
+  }
+  catch (err) {
 
-    res.status(500).json({ error: err.message });
+    console.error("UPDATE ERROR:", err);
+
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
 
   }
 
