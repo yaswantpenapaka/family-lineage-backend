@@ -162,103 +162,11 @@ app.get("/persons/:id", async (req, res) => {
 });
 
 /* UPDATE PERSON */
-
-app.put("/persons/:id", upload.single("photo"), async (req, res) => {
-  try {
-    const { firstname, surname, dob, instagram } = req.body;
-
-    if (!firstname || !surname || !dob)
-      return res.status(400).json({
-        error: "firstname, surname and dob required"
-      });
-
-    let photo = req.file ? req.file.path : null;
-
-    if (photo) {
-      await db.execute(
-        `UPDATE persons 
-         SET firstname=?, surname=?, dob=?, instagram=?, profile_pic=? 
-         WHERE id=?`,
-        [firstname, surname, dob, instagram, photo, req.params.id]
-      );
-    } else {
-      await db.execute(
-        `UPDATE persons 
-         SET firstname=?, surname=?, dob=?, instagram=? 
-         WHERE id=?`,
-        [firstname, surname, dob, instagram, req.params.id]
-      );
-    }
-
-    res.json({
-      success: true,
-      message: "Profile updated"
-    });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.put("/persons/:id", async (req, res) => {
 
   try{
 
-    const { father_id, mother_id, spouse_id } = req.body;
-
-    await db.execute(
-
-      `UPDATE persons SET
-      father_id = COALESCE(?, father_id),
-      mother_id = COALESCE(?, mother_id),
-      spouse_id = COALESCE(?, spouse_id)
-      WHERE id=?`,
-
-      [father_id, mother_id, spouse_id, req.params.id]
-
-    );
-
-    res.json({ success:true });
-
-  }catch(err){
-
-    res.status(500).json({error:err.message});
-
-  }
-
-});
-
-app.put("/persons/:id", async (req, res) => {
-
-  const {
-
-    firstname,
-    surname,
-    dob,
-    gender,
-    instagram,
-    anniversary,
-    father_id,
-    mother_id
-
-  } = req.body;
-
-  await db.execute(
-
-    `UPDATE persons SET
-
-    firstname = COALESCE(?, firstname),
-    surname = COALESCE(?, surname),
-    dob = COALESCE(?, dob),
-    gender = COALESCE(?, gender),
-    instagram = COALESCE(?, instagram),
-    anniversary = COALESCE(?, anniversary),
-    father_id = COALESCE(?, father_id),
-    mother_id = COALESCE(?, mother_id)
-
-    WHERE id=?`,
-
-    [
+    const {
       firstname,
       surname,
       dob,
@@ -267,12 +175,45 @@ app.put("/persons/:id", async (req, res) => {
       anniversary,
       father_id,
       mother_id,
-      req.params.id
-    ]
+      spouse_id
+    } = req.body;
 
-  );
+    await db.execute(
 
-  res.json({success:true});
+      `UPDATE persons SET
+       firstname = COALESCE(?, firstname),
+       surname = COALESCE(?, surname),
+       dob = COALESCE(?, dob),
+       gender = COALESCE(?, gender),
+       instagram = COALESCE(?, instagram),
+       anniversary = COALESCE(?, anniversary),
+       father_id = COALESCE(?, father_id),
+       mother_id = COALESCE(?, mother_id),
+       spouse_id = COALESCE(?, spouse_id)
+       WHERE id=?`,
+
+      [
+        firstname,
+        surname,
+        dob,
+        gender,
+        instagram,
+        anniversary,
+        father_id,
+        mother_id,
+        spouse_id,
+        req.params.id
+      ]
+
+    );
+
+    res.json({ success:true });
+
+  }catch(err){
+
+    res.status(500).json({ error:err.message });
+
+  }
 
 });
 
