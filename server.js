@@ -1,5 +1,4 @@
 require("dotenv").config();
-
 const express = require("express");
 const cors = require("cors");
 const mysql = require("mysql2/promise");
@@ -10,13 +9,10 @@ const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
 const app = express();
-
-/* Middleware */
-
 app.use(cors());
 app.use(express.json());
 
-/* Database Connection */
+/* ---------------- DATABASE ---------------- */
 
 const db = mysql.createPool({
   host: process.env.DB_HOST,
@@ -24,21 +20,17 @@ const db = mysql.createPool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  ssl: {
-    rejectUnauthorized: true
-  },
+  ssl: { rejectUnauthorized: true },
   connectionLimit: 10
 });
 
-/* Cloudinary Config */
+/* ---------------- CLOUDINARY ---------------- */
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
-
-/* Multer Storage */
 
 const storage = new CloudinaryStorage({
   cloudinary,
@@ -50,13 +42,7 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-/* Health Check Route */
-
-app.get("/", (req, res) => {
-  res.json({ status: "Family Lineage API Running" });
-});
-
-/* LOGIN */
+/* ---------------- LOGIN ---------------- */
 
 app.post("/login", async (req, res) => {
   try {
@@ -70,165 +56,250 @@ app.post("/login", async (req, res) => {
       [firstname, surname]
     );
 
-    if (rows.length === 0)
+    if (!rows.length)
       return res.status(404).json({ error: "User not found" });
 
     res.json(rows[0]);
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "Login failed" });
   }
 });
 
-/* CREATE PROFILE */
-
-app.post("/persons", upload.single("photo"), async (req, res) => {
-  try {
-    const id = uuidv4();
-
-    const {
-      firstname,
-      surname,
-      dob,
-      father_id,
-      mother_id,
-      spouse_id,
-      created_by
-    } = req.body;
-
-    if (!firstname || !surname || !dob)
-      return res.status(400).json({
-        error: "firstname, surname and dob required"
-      });
-
-    const photo = req.file ? req.file.path : null;
-
-    await db.execute(
-      `INSERT INTO persons 
-      (id, firstname, surname, dob, profile_pic, father_id, mother_id, spouse_id, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        firstname,
-        surname,
-        dob,
-        photo,
-        father_id || null,
-        mother_id || null,
-        spouse_id || null,
-        created_by || null
-      ]
-    );
-
-    res.json({
-      success: true,
-      message: "Profile created",
-      id
-    });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Insert failed" });
-  }
-});
-
-/* GET ALL PERSONS */
+/* ---------------- GET PERSONS ---------------- */
 
 app.get("/persons", async (req, res) => {
-  try {
-    const [rows] = await db.execute("SELECT * FROM persons");
-    res.json(rows);
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const [rows] = await db.execute("SELECT * FROM persons");
+  res.json(rows);
 });
-
-/* GET SINGLE PERSON */
 
 app.get("/persons/:id", async (req, res) => {
-  try {
-    const [rows] = await db.execute(
-      "SELECT * FROM persons WHERE id=?",
-      [req.params.id]
-    );
+  const [rows] = await db.execute(
+    "SELECT * FROM persons WHERE id=?",
+    [req.params.id]
+  );
+  if (!rows.length)
+    return res.status(404).json({ error: "Not found" });
 
-    res.json(rows[0]);
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  res.json(rows[0]);
 });
 
-/* UPDATE PERSON */
-app.put("/persons/:id", async (req, res) => {
+/* ---------------- PERMISSION CHECK ---------------- */
+
+async function canEdit(editorId, targetId) {
+
+  const [editRows] = await db.execute(
+    "SELECT * FROM persons WHERE id=?",
+    [editorId]
+  );
+
+  if (!editRows.length) return false;
+
+  const editor = editRows[0];
+
+  if (editor.role === "ADMIN") return true;
+
+  const [targetRows] = await db.execute(
+    "SELECT * FROM persons WHERE id=?",
+    [targetId]
+  );
+
+  if (!targetRows.length) return false;
+
+  const target = targetRows[0];
+
+  if (editor.id === target.id) return true;
+
+  if (target.id === editor.father_id ||
+      target.id === editor.mother_id) return true;
+
+  if (target.id === editor.spouse_id) return true;
+
+  if (target.father_id === editor.id ||
+      target.mother_id === editor.id) return true;
+
+  return false;
+}
+
+/* ---------------- UPDATE PROFILE ---------------- */
+
+app.put("/persons/:id", upload.single("photo"), async (req, res) => {
 
   try {
 
-    console.log("Update request body:", req.body);
+    const editorId = req.headers["userid"];
+    const targetId = req.params.id;
 
-    const id = req.params.id;
+    if (!(await canEdit(editorId, targetId)))
+      return res.status(403).json({ error: "Permission denied" });
 
-    const firstname = req.body.firstname || null;
-    const surname = req.body.surname || null;
-    const dob = req.body.dob || null;
-    const gender = req.body.gender || null;
-    const instagram = req.body.instagram || null;
-    const anniversary = req.body.anniversary || null;
-    const profile_pic = req.body.profile_pic || null;
-
-    const query = `
-      UPDATE persons SET
-        firstname = COALESCE(?, firstname),
-        surname = COALESCE(?, surname),
-        dob = COALESCE(?, dob),
-        gender = COALESCE(?, gender),
-        instagram = COALESCE(?, instagram),
-        anniversary = COALESCE(?, anniversary),
-        profile_pic = COALESCE(?, profile_pic)
-      WHERE id = ?
-    `;
-
-    const values = [
+    const {
       firstname,
       surname,
       dob,
       gender,
       instagram,
       anniversary,
-      profile_pic,
-      id
-    ];
+      married
+    } = req.body;
 
-    console.log("Executing query:", query);
-    console.log("Values:", values);
+    const photo = req.file ? req.file.path : null;
 
-    await db.execute(query, values);
+    await db.execute(
+      `UPDATE persons SET
+        firstname = COALESCE(?, firstname),
+        surname = COALESCE(?, surname),
+        dob = COALESCE(?, dob),
+        gender = COALESCE(?, gender),
+        instagram = COALESCE(?, instagram),
+        anniversary = COALESCE(?, anniversary),
+        married = COALESCE(?, married),
+        profile_pic = COALESCE(?, profile_pic)
+      WHERE id=?`,
+      [
+        firstname || null,
+        surname || null,
+        dob || null,
+        gender || null,
+        instagram || null,
+        anniversary || null,
+        married || null,
+        photo,
+        targetId
+      ]
+    );
 
-    res.json({
-      success: true,
-      message: "Profile updated"
-    });
+    res.json({ success: true });
 
+  } catch (err) {
+    res.status(500).json({ error: "Update failed" });
   }
-  catch (err) {
-
-    console.error("UPDATE ERROR:", err);
-
-    res.status(500).json({
-      success: false,
-      error: err.message
-    });
-
-  }
-
 });
 
-/* SERVER START */
+/* ---------------- ADD FATHER ---------------- */
+
+app.post("/add-father/:id", async (req, res) => {
+
+  const childId = req.params.id;
+  const { firstname, surname, dob } = req.body;
+
+  const fatherId = uuidv4();
+
+  await db.execute(
+    "INSERT INTO persons (id, firstname, surname, dob, gender) VALUES (?, ?, ?, ?, 'Male')",
+    [fatherId, firstname, surname, dob]
+  );
+
+  await db.execute(
+    "UPDATE persons SET father_id=? WHERE id=?",
+    [fatherId, childId]
+  );
+
+  res.json({ success: true });
+});
+
+/* ---------------- ADD MOTHER ---------------- */
+
+app.post("/add-mother/:id", async (req, res) => {
+
+  const childId = req.params.id;
+  const { firstname, surname, dob } = req.body;
+
+  const motherId = uuidv4();
+
+  await db.execute(
+    "INSERT INTO persons (id, firstname, surname, dob, gender) VALUES (?, ?, ?, ?, 'Female')",
+    [motherId, firstname, surname, dob]
+  );
+
+  await db.execute(
+    "UPDATE persons SET mother_id=? WHERE id=?",
+    [motherId, childId]
+  );
+
+  res.json({ success: true });
+});
+
+/* ---------------- ADD SPOUSE ---------------- */
+
+app.post("/add-spouse/:id", async (req, res) => {
+
+  const personId = req.params.id;
+
+  const [rows] = await db.execute(
+    "SELECT * FROM persons WHERE id=?",
+    [personId]
+  );
+
+  const person = rows[0];
+
+  if (person.married == 1)
+    return res.status(400).json({ error: "Already married" });
+
+  const { firstname, surname, dob, gender } = req.body;
+
+  const spouseId = uuidv4();
+
+  await db.execute(
+    "INSERT INTO persons (id, firstname, surname, dob, gender, married) VALUES (?, ?, ?, ?, ?, 1)",
+    [spouseId, firstname, surname, dob, gender]
+  );
+
+  await db.execute(
+    "UPDATE persons SET spouse_id=?, married=1 WHERE id=?",
+    [spouseId, personId]
+  );
+
+  await db.execute(
+    "UPDATE persons SET spouse_id=?, married=1 WHERE id=?",
+    [personId, spouseId]
+  );
+
+  res.json({ success: true });
+});
+
+/* ---------------- ADD CHILD ---------------- */
+
+app.post("/add-child/:id", async (req, res) => {
+
+  const parentId = req.params.id;
+
+  const [rows] = await db.execute(
+    "SELECT * FROM persons WHERE id=?",
+    [parentId]
+  );
+
+  const parent = rows[0];
+
+  if (parent.married != 1)
+    return res.status(400).json({ error: "Must be married to add child" });
+
+  const { firstname, surname, dob, gender } = req.body;
+
+  const childId = uuidv4();
+
+  let father_id = null;
+  let mother_id = null;
+
+  if (parent.gender === "Male") {
+    father_id = parent.id;
+    mother_id = parent.spouse_id;
+  } else {
+    mother_id = parent.id;
+    father_id = parent.spouse_id;
+  }
+
+  await db.execute(
+    "INSERT INTO persons (id, firstname, surname, dob, gender, father_id, mother_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [childId, firstname, surname, dob, gender, father_id, mother_id]
+  );
+
+  res.json({ success: true });
+});
+
+/* ---------------- SERVER ---------------- */
 
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, "0.0.0.0", () => {
   console.log("Server running on port", PORT);
 });
