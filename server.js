@@ -83,7 +83,12 @@ app.get("/persons/:id", async (req, res) => {
 app.get("/persons", async (req, res) => {
 
   const [persons] = await db.execute("SELECT * FROM persons");
-  const [relations] = await db.execute("SELECT * FROM parent_child");
+  const [relations] = await db.execute(`
+  SELECT pc.*
+  FROM parent_child pc
+  JOIN persons p ON pc.child_id = p.id
+  ORDER BY p.dob
+`);
   const [marriages] = await db.execute("SELECT * FROM marriages");
 
   res.json({ persons, relations, marriages });
