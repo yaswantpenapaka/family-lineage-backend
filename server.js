@@ -312,6 +312,68 @@ app.post("/add-child/:id", async (req, res) => {
   res.json({ success: true });
 });
 
+
+app.get("/upcoming-events", async (req, res) => {
+
+  const [persons] = await db.execute("SELECT * FROM persons");
+
+  const today = new Date();
+  const threeMonthsLater = new Date();
+  threeMonthsLater.setMonth(today.getMonth() + 3);
+
+  const events = [];
+
+  persons.forEach(p => {
+
+    // Birthday
+    if (p.dob) {
+      const dob = new Date(p.dob);
+      const nextBirthday = new Date(
+        today.getFullYear(),
+        dob.getMonth(),
+        dob.getDate()
+      );
+
+      if (nextBirthday < today)
+        nextBirthday.setFullYear(today.getFullYear() + 1);
+
+      if (nextBirthday <= threeMonthsLater) {
+        events.push({
+          type: "Birthday",
+          name: p.firstname,
+          date: nextBirthday
+        });
+      }
+    }
+
+    // Anniversary
+    if (p.anniversary) {
+      const ann = new Date(p.anniversary);
+      const nextAnn = new Date(
+        today.getFullYear(),
+        ann.getMonth(),
+        ann.getDate()
+      );
+
+      if (nextAnn < today)
+        nextAnn.setFullYear(today.getFullYear() + 1);
+
+      if (nextAnn <= threeMonthsLater) {
+        events.push({
+          type: "Anniversary",
+          name: p.firstname,
+          date: nextAnn
+        });
+      }
+    }
+
+  });
+
+  events.sort((a, b) => a.date - b.date);
+
+  res.json(events);
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () =>
   console.log("Server running on", PORT)
